@@ -964,6 +964,48 @@ html, body, #root {
   color: var(--red);
 }
 
+/* Pagination controls */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 12px 0;
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 /* Dev-only hidden delete trigger on status badge */
 .dev-delete-call {
   display: inline-block;
@@ -1007,6 +1049,11 @@ html, body, #root {
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.agent-number {
+  color: var(--green, #10b981);
+  letter-spacing: 0.3px;
 }
 
 .billing-cost {

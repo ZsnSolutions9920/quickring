@@ -13,7 +13,7 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await db.query(
-      'SELECT id, name, email, password_hash FROM kc_agents WHERE email = $1 AND is_active = true',
+      'SELECT id, name, email, password_hash, phone_number FROM kc_agents WHERE email = $1 AND is_active = true',
       [email]
     );
 
@@ -40,7 +40,7 @@ router.post('/login', async (req, res) => {
     );
 
     res.json({
-      agent: { id: agent.id, name: agent.name, email: agent.email },
+      agent: { id: agent.id, name: agent.name, email: agent.email, phone_number: agent.phone_number },
       accessToken,
       refreshToken,
     });

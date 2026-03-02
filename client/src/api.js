@@ -53,9 +53,9 @@ export const api = {
       method: 'DELETE',
     }),
 
-  getCallHistory: () => request('/calls/history'),
+  getCallHistory: (page = 1, limit = 10) => request(`/calls/history?page=${page}&limit=${limit}`),
 
-  getInboundHistory: () => request('/calls/inbound-history'),
+  getInboundHistory: (page = 1, limit = 10) => request(`/calls/inbound-history?page=${page}&limit=${limit}`),
 
   getBilling: () => request('/calls/billing'),
 

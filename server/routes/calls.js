@@ -109,17 +109,33 @@ router.get('/billing', authenticate, async (req, res) => {
   }
 });
 
-// Get inbound call history for the agent
+// Get inbound call history for the agent (paginated)
 router.get('/inbound-history', authenticate, async (req, res) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const offset = (page - 1) * limit;
+
+    const countResult = await db.query(
+      `SELECT COUNT(*) FROM kc_call_logs WHERE agent_id = $1 AND direction = 'inbound'`,
+      [req.agent.id]
+    );
+    const total = parseInt(countResult.rows[0].count);
+
     const result = await db.query(
       `SELECT * FROM kc_call_logs
        WHERE agent_id = $1 AND direction = 'inbound'
        ORDER BY started_at DESC
-       LIMIT 50`,
-      [req.agent.id]
+       LIMIT $2 OFFSET $3`,
+      [req.agent.id, limit, offset]
     );
-    res.json(result.rows);
+
+    res.json({
+      calls: result.rows,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (err) {
     console.error('Fetch inbound history error:', err);
     res.status(500).json({ error: 'Failed to fetch inbound history' });
@@ -175,17 +191,33 @@ router.get('/:callSid/recording', authenticate, async (req, res) => {
   }
 });
 
-// Get call history for the agent
+// Get call history for the agent (paginated)
 router.get('/history', authenticate, async (req, res) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const offset = (page - 1) * limit;
+
+    const countResult = await db.query(
+      `SELECT COUNT(*) FROM kc_call_logs WHERE agent_id = $1`,
+      [req.agent.id]
+    );
+    const total = parseInt(countResult.rows[0].count);
+
     const result = await db.query(
       `SELECT * FROM kc_call_logs
        WHERE agent_id = $1
        ORDER BY started_at DESC
-       LIMIT 50`,
-      [req.agent.id]
+       LIMIT $2 OFFSET $3`,
+      [req.agent.id, limit, offset]
     );
-    res.json(result.rows);
+
+    res.json({
+      calls: result.rows,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (err) {
     console.error('Fetch history error:', err);
     res.status(500).json({ error: 'Failed to fetch history' });
