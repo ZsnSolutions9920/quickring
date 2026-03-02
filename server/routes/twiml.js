@@ -9,7 +9,6 @@ const router = express.Router();
 const childToParentMap = new Map();
 
 const TERMINAL_STATUSES = ['completed', 'no-answer', 'busy', 'canceled', 'failed'];
-const MACHINE_TYPES = ['machine_start', 'machine_end_beep', 'machine_end_silence', 'machine_end_other', 'fax'];
 
 // This endpoint is called by Twilio for both outgoing (browser→phone) and
 // incoming (phone→browser) calls via the TwiML App voice URL.
@@ -51,9 +50,6 @@ router.post('/voice', async (req, res) => {
       statusCallback: `${baseUrl}/api/twiml/child-status`,
       statusCallbackEvent: 'initiated ringing answered completed',
       statusCallbackMethod: 'POST',
-      machineDetection: 'Enable',
-      amdStatusCallback: `${baseUrl}/api/twiml/amd`,
-      amdStatusCallbackMethod: 'POST',
     }, to);
   } else if (!isOutbound && to) {
     // --- INBOUND: external caller dialing a Twilio number ---
@@ -157,45 +153,6 @@ router.post('/child-status', async (req, res) => {
   res.sendStatus(200);
 });
 
-// Answering Machine Detection callback
-router.post('/amd', async (req, res) => {
-  const { CallSid, AnsweredBy } = req.body;
-  const parentCallSid = childToParentMap.get(CallSid);
-  console.log(`AMD result for ${CallSid} (parent: ${parentCallSid}): ${AnsweredBy}`);
-
-  if (MACHINE_TYPES.includes(AnsweredBy) && parentCallSid) {
-    try {
-      // Hang up the child call (voicemail)
-      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-      await client.calls(CallSid).update({ status: 'completed' });
-
-      // Mark as voicemail with 0 duration so it's not billed
-      await db.query(
-        'UPDATE kc_call_logs SET status = $1, duration = 0 WHERE call_sid = $2',
-        ['voicemail', parentCallSid]
-      );
-
-      // Notify agent
-      const result = await db.query(
-        'SELECT agent_id FROM kc_call_logs WHERE call_sid = $1',
-        [parentCallSid]
-      );
-      const io = getIO();
-      if (result.rows[0] && io) {
-        io.to(`agent:${result.rows[0].agent_id}`).emit('call:voicemail', {
-          callSid: parentCallSid,
-        });
-      }
-
-      childToParentMap.delete(CallSid);
-    } catch (err) {
-      console.error('AMD handling error:', err);
-    }
-  }
-
-  res.sendStatus(200);
-});
-
 // Call status callback — Twilio POSTs here when call status changes
 router.post('/status', async (req, res) => {
   const { CallSid, CallStatus, CallDuration, From } = req.body;
@@ -207,7 +164,7 @@ router.post('/status', async (req, res) => {
     // the child-status callback sets the accurate talk-time duration.
     await db.query(
       `UPDATE kc_call_logs
-       SET status = CASE WHEN status = 'voicemail' THEN status ELSE $1 END,
+       SET status = $1,
            ended_at = CASE WHEN $1 = ANY($2::text[]) THEN NOW() ELSE ended_at END
        WHERE call_sid = $3`,
       [CallStatus, TERMINAL_STATUSES, CallSid]

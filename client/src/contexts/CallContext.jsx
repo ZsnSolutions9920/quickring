@@ -129,26 +129,10 @@ export function CallProvider({ children }) {
       }
     };
 
-    const handleVoicemail = ({ callSid }) => {
-      if (callRef.current && callRef.current.parameters.CallSid === callSid) {
-        setCallState('voicemail');
-        stopTimer();
-        callRef.current.disconnect();
-        callRef.current = null;
-        setTimeout(() => {
-          setCallState('idle');
-          setCallDuration(0);
-          setIsMuted(false);
-        }, 2500);
-      }
-    };
-
     socket.on('call:answered', handleAnswered);
-    socket.on('call:voicemail', handleVoicemail);
 
     return () => {
       socket.off('call:answered', handleAnswered);
-      socket.off('call:voicemail', handleVoicemail);
     };
   }, [socket, startTimer, stopTimer]);
 
