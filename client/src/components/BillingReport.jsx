@@ -203,7 +203,7 @@ export default function BillingReport() {
                       <span className={`badge ${statusBadge(call.status)}`}>{call.status}</span>
                       <span className="history-duration">{formatDuration(call.duration)}</span>
                       <span className="billing-call-cost">${cost.toFixed(2)}</span>
-                      {call.recording_url && (
+                      {call.status === 'completed' && call.duration > 0 && (
                         <a
                           href={api.getRecordingUrl(call.call_sid)}
                           download={`${call.call_sid}.mp3`}

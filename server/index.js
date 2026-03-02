@@ -5,6 +5,7 @@ const http = require('http');
 const cors = require('cors');
 const path = require('path');
 
+const db = require('./db');
 const authRoutes = require('./routes/auth');
 const tokenRoutes = require('./routes/token');
 const twimlRoutes = require('./routes/twiml');
@@ -42,6 +43,12 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  // Auto-migrate: ensure recording_url column exists
+  try {
+    await db.query('ALTER TABLE kc_call_logs ADD COLUMN IF NOT EXISTS recording_url VARCHAR(512)');
+  } catch (err) {
+    console.error('Auto-migration warning:', err.message);
+  }
 });

@@ -1,5 +1,6 @@
 const express = require('express');
 const https = require('https');
+const twilio = require('twilio');
 const authenticate = require('../middleware/auth');
 const db = require('../db');
 const { getIO } = require('../io');
@@ -279,22 +280,40 @@ router.get('/inbound-history', authenticate, async (req, res) => {
 // Download call recording as MP3 (proxied through server with Twilio auth)
 router.get('/:callSid/recording', authenticate, async (req, res) => {
   try {
+    // Check DB first for saved recording URL
     const result = await db.query(
       'SELECT recording_url FROM kc_call_logs WHERE call_sid = $1 AND agent_id = $2',
       [req.params.callSid, req.agent.id]
     );
 
-    if (!result.rows[0] || !result.rows[0].recording_url) {
-      return res.status(404).json({ error: 'Recording not found' });
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'Call not found' });
     }
 
-    const recordingUrl = result.rows[0].recording_url + '.mp3';
+    let recordingUrl = result.rows[0].recording_url;
+
+    // Fallback: look up recording via Twilio API if not saved in DB
+    if (!recordingUrl) {
+      const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      const recordings = await client.recordings.list({ callSid: req.params.callSid, limit: 1 });
+      if (recordings.length === 0) {
+        return res.status(404).json({ error: 'Recording not found' });
+      }
+      recordingUrl = `https://api.twilio.com${recordings[0].uri.replace('.json', '')}`;
+      // Save for next time
+      await db.query(
+        'UPDATE kc_call_logs SET recording_url = $1 WHERE call_sid = $2',
+        [recordingUrl, req.params.callSid]
+      );
+    }
+
+    const mp3Url = recordingUrl + '.mp3';
     const authString = Buffer.from(
       `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
     ).toString('base64');
 
     // Fetch from Twilio and stream to client
-    https.get(recordingUrl, { headers: { Authorization: `Basic ${authString}` } }, (twilioRes) => {
+    https.get(mp3Url, { headers: { Authorization: `Basic ${authString}` } }, (twilioRes) => {
       // Follow redirect if Twilio returns one
       if (twilioRes.statusCode >= 300 && twilioRes.statusCode < 400 && twilioRes.headers.location) {
         https.get(twilioRes.headers.location, (redirectRes) => {
