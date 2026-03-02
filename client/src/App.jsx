@@ -8,6 +8,7 @@ import Dialer from './components/Dialer';
 import CallHistory from './components/CallHistory';
 import InboundHistory from './components/InboundHistory';
 import BillingBar from './components/BillingBar';
+import BillingReport from './components/BillingReport';
 import IncomingCallModal from './components/IncomingCallModal';
 
 export default function App() {
@@ -45,6 +46,7 @@ export default function App() {
               {view === 'dialer' && <Dialer />}
               {view === 'history' && <CallHistory />}
               {view === 'inbound' && <InboundHistory />}
+              {view === 'billing' && <BillingReport />}
             </div>
           </main>
         </div>

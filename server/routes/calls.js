@@ -109,6 +109,140 @@ router.get('/billing', authenticate, async (req, res) => {
   }
 });
 
+// Get monthly billing summary (all months grouped)
+router.get('/billing/monthly-summary', authenticate, async (req, res) => {
+  try {
+    const rate = parseFloat(process.env.RATE_PER_MINUTE) || 0;
+    const result = await db.query(
+      `SELECT
+         date_trunc('month', started_at) AS month,
+         COUNT(*) FILTER (WHERE status = 'completed') AS completed_calls,
+         COUNT(*) FILTER (WHERE status = 'completed' AND direction = 'outbound') AS outbound_calls,
+         COUNT(*) FILTER (WHERE status = 'completed' AND direction = 'inbound') AS inbound_calls,
+         COALESCE(SUM(duration) FILTER (WHERE status = 'completed'), 0) AS total_seconds,
+         COALESCE(SUM(duration) FILTER (WHERE status = 'completed' AND direction = 'outbound'), 0) AS outbound_seconds,
+         COALESCE(SUM(duration) FILTER (WHERE status = 'completed' AND direction = 'inbound'), 0) AS inbound_seconds
+       FROM kc_call_logs
+       WHERE agent_id = $1
+       GROUP BY date_trunc('month', started_at)
+       ORDER BY month DESC`,
+      [req.agent.id]
+    );
+
+    const months = result.rows.map((row) => ({
+      month: row.month,
+      completed_calls: parseInt(row.completed_calls),
+      outbound_calls: parseInt(row.outbound_calls),
+      inbound_calls: parseInt(row.inbound_calls),
+      total_seconds: parseInt(row.total_seconds),
+      outbound_seconds: parseInt(row.outbound_seconds),
+      inbound_seconds: parseInt(row.inbound_seconds),
+      total_minutes: Math.round((parseInt(row.total_seconds) / 60) * 100) / 100,
+      total_cost: Math.round((parseInt(row.total_seconds) / 60) * rate * 100) / 100,
+    }));
+
+    res.json({ rate_per_minute: rate, months });
+  } catch (err) {
+    console.error('Monthly summary error:', err);
+    res.status(500).json({ error: 'Failed to fetch monthly summary' });
+  }
+});
+
+// Get paginated call list for a specific month
+router.get('/billing/month/:month', authenticate, async (req, res) => {
+  try {
+    const rate = parseFloat(process.env.RATE_PER_MINUTE) || 0;
+    const monthStr = req.params.month; // e.g. "2026-03"
+    const startDate = `${monthStr}-01`;
+    const [year, mon] = monthStr.split('-').map(Number);
+    const nextMonth = mon === 12 ? `${year + 1}-01-01` : `${year}-${String(mon + 1).padStart(2, '0')}-01`;
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+    const offset = (page - 1) * limit;
+
+    const countResult = await db.query(
+      `SELECT COUNT(*) FROM kc_call_logs
+       WHERE agent_id = $1 AND status = 'completed'
+         AND started_at >= $2 AND started_at < $3`,
+      [req.agent.id, startDate, nextMonth]
+    );
+    const total = parseInt(countResult.rows[0].count);
+
+    const result = await db.query(
+      `SELECT * FROM kc_call_logs
+       WHERE agent_id = $1 AND status = 'completed'
+         AND started_at >= $2 AND started_at < $3
+       ORDER BY started_at DESC
+       LIMIT $4 OFFSET $5`,
+      [req.agent.id, startDate, nextMonth, limit, offset]
+    );
+
+    res.json({
+      month: monthStr,
+      rate_per_minute: rate,
+      calls: result.rows,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error('Monthly detail error:', err);
+    res.status(500).json({ error: 'Failed to fetch monthly detail' });
+  }
+});
+
+// Export CSV for a specific month
+router.get('/billing/export/:month', authenticate, async (req, res) => {
+  try {
+    const monthStr = req.params.month;
+    const startDate = `${monthStr}-01`;
+    const [year, mon] = monthStr.split('-').map(Number);
+    const nextMonth = mon === 12 ? `${year + 1}-01-01` : `${year}-${String(mon + 1).padStart(2, '0')}-01`;
+    const rate = parseFloat(process.env.RATE_PER_MINUTE) || 0;
+
+    const result = await db.query(
+      `SELECT phone_number, direction, status, duration, started_at, ended_at
+       FROM kc_call_logs
+       WHERE agent_id = $1 AND status = 'completed'
+         AND started_at >= $2 AND started_at < $3
+       ORDER BY started_at DESC`,
+      [req.agent.id, startDate, nextMonth]
+    );
+
+    const escCsv = (val) => {
+      const s = String(val ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    let csv = 'Phone Number,Direction,Status,Duration (sec),Duration (min),Cost,Started At,Ended At\n';
+    for (const row of result.rows) {
+      const durSec = row.duration || 0;
+      const durMin = Math.round((durSec / 60) * 100) / 100;
+      const cost = Math.round(durMin * rate * 100) / 100;
+      csv += [
+        escCsv(row.phone_number),
+        escCsv(row.direction),
+        escCsv(row.status),
+        durSec,
+        durMin,
+        cost.toFixed(2),
+        escCsv(row.started_at ? new Date(row.started_at).toISOString() : ''),
+        escCsv(row.ended_at ? new Date(row.ended_at).toISOString() : ''),
+      ].join(',') + '\n';
+    }
+
+    res.set({
+      'Content-Type': 'text/csv',
+      'Content-Disposition': `attachment; filename="billing-${monthStr}.csv"`,
+    });
+    res.send(csv);
+  } catch (err) {
+    console.error('Billing export error:', err);
+    res.status(500).json({ error: 'Failed to export billing' });
+  }
+});
+
 // Get inbound call history for the agent (paginated)
 router.get('/inbound-history', authenticate, async (req, res) => {
   try {

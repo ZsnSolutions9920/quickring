@@ -60,4 +60,12 @@ export const api = {
   getBilling: () => request('/calls/billing'),
 
   getRecordingUrl: (callSid) => `${API_BASE}/calls/${callSid}/recording?token=${getToken()}`,
+
+  getBillingSummary: () => request('/calls/billing/monthly-summary'),
+
+  getBillingMonth: (month, page = 1, limit = 10) =>
+    request(`/calls/billing/month/${month}?page=${page}&limit=${limit}`),
+
+  getBillingExportUrl: (month) =>
+    `${API_BASE}/calls/billing/export/${month}?token=${getToken()}`,
 };
