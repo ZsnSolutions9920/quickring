@@ -164,7 +164,7 @@ export default function InboundHistory() {
                     </span>
                     <span className="history-duration">{formatDuration(call.duration)}</span>
                     <span className="billing-call-cost">${cost}</span>
-                    {call.status === 'completed' && call.duration > 0 && (
+                    {call.recording_sid && (
                       <a
                         href={api.getRecordingUrl(call.call_sid)}
                         download={`${call.call_sid}.mp3`}
