@@ -78,11 +78,23 @@ export function CallProvider({ children }) {
       });
 
       device.on('incoming', (call) => {
-        console.log('Incoming call from:', call.customParameters?.get('callerNumber') || call.parameters.From);
+        const callerNumber = call.customParameters?.get('callerNumber') || call.parameters.From;
+        console.log('Incoming call from:', callerNumber);
         setIncomingCall(call);
 
+        // Log immediately so missed/rejected calls appear in history
+        api.logCall({
+          callSid: call.parameters.CallSid,
+          phoneNumber: callerNumber,
+          direction: 'inbound',
+        }).catch((err) => console.error('Failed to log inbound call:', err));
+
         call.on('cancel', () => {
+          // Caller hung up before agent answered — missed call
           setIncomingCall(null);
+          api.updateCall(call.parameters.CallSid, {
+            status: 'no-answer',
+          }).catch((err) => console.error('Failed to update missed call:', err));
         });
 
         call.on('disconnect', () => {
@@ -158,13 +170,6 @@ export function CallProvider({ children }) {
     callRef.current = incomingCall;
     setIncomingCall(null);
 
-    const phoneNumber = incomingCall.customParameters?.get('callerNumber') || incomingCall.parameters.From;
-    api.logCall({
-      callSid: incomingCall.parameters.CallSid,
-      phoneNumber,
-      direction: 'inbound',
-    }).catch((err) => console.error('Failed to log inbound call:', err));
-
     incomingCall.on('disconnect', () => {
       setCallState('closed');
       stopTimer();
@@ -184,6 +189,9 @@ export function CallProvider({ children }) {
   const rejectIncoming = useCallback(() => {
     if (!incomingCall) return;
     incomingCall.reject();
+    api.updateCall(incomingCall.parameters.CallSid, {
+      status: 'canceled',
+    }).catch((err) => console.error('Failed to update rejected call:', err));
     setIncomingCall(null);
   }, [incomingCall]);
 
