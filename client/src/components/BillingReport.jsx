@@ -151,7 +151,7 @@ export default function BillingReport() {
             <div className="billing-direction-info">
               <span className="billing-direction-label">Outbound</span>
               <span className="billing-direction-value">{selectedSummary.outbound_calls} calls</span>
-              <span className="billing-direction-sub">{Math.round((selectedSummary.outbound_seconds / 60) * 100) / 100} min</span>
+              <span className="billing-direction-sub">{selectedSummary.outbound_minutes} min</span>
             </div>
           </div>
           <div className="billing-direction-card inbound">
@@ -164,7 +164,7 @@ export default function BillingReport() {
             <div className="billing-direction-info">
               <span className="billing-direction-label">Inbound</span>
               <span className="billing-direction-value">{selectedSummary.inbound_calls} calls</span>
-              <span className="billing-direction-sub">{Math.round((selectedSummary.inbound_seconds / 60) * 100) / 100} min</span>
+              <span className="billing-direction-sub">{selectedSummary.inbound_minutes} min</span>
             </div>
           </div>
         </div>
@@ -178,8 +178,9 @@ export default function BillingReport() {
               {monthData.calls.map((call) => {
                 const phone = parsePhone(call.phone_number);
                 const isInbound = call.direction === 'inbound';
-                const durMin = Math.round((call.duration || 0) / 60 * 100) / 100;
-                const cost = Math.round(durMin * rate * 100) / 100;
+                const durSec = call.duration || 0;
+                const billableMin = durSec > 0 ? Math.ceil(durSec / 60) : 0;
+                const cost = Math.round(billableMin * rate * 100) / 100;
                 return (
                   <div key={call.id} className="history-item">
                     <div className="history-item-icon">

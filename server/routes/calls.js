@@ -127,8 +127,8 @@ router.get('/billing', authenticate, async (req, res) => {
     const result = await db.query(
       `SELECT
          COALESCE(SUM(duration), 0) AS total_seconds,
-         ROUND(COALESCE(SUM(duration), 0) / 60.0, 2) AS total_minutes,
-         ROUND(COALESCE(SUM(duration), 0) / 60.0 * $1, 2) AS total_cost
+         COALESCE(SUM(CEIL(duration / 60.0)), 0) AS total_minutes,
+         ROUND(COALESCE(SUM(CEIL(duration / 60.0)), 0) * $1, 2) AS total_cost
        FROM kc_call_logs
        WHERE agent_id = $2
          AND started_at >= date_trunc('month', NOW())
@@ -155,8 +155,11 @@ router.get('/billing/monthly-summary', authenticate, async (req, res) => {
          COUNT(*) FILTER (WHERE status = 'completed' AND direction = 'outbound') AS outbound_calls,
          COUNT(*) FILTER (WHERE status = 'completed' AND direction = 'inbound') AS inbound_calls,
          COALESCE(SUM(duration) FILTER (WHERE status = 'completed'), 0) AS total_seconds,
+         COALESCE(SUM(CEIL(duration / 60.0)) FILTER (WHERE status = 'completed'), 0) AS total_billable_minutes,
          COALESCE(SUM(duration) FILTER (WHERE status = 'completed' AND direction = 'outbound'), 0) AS outbound_seconds,
-         COALESCE(SUM(duration) FILTER (WHERE status = 'completed' AND direction = 'inbound'), 0) AS inbound_seconds
+         COALESCE(SUM(CEIL(duration / 60.0)) FILTER (WHERE status = 'completed' AND direction = 'outbound'), 0) AS outbound_billable_minutes,
+         COALESCE(SUM(duration) FILTER (WHERE status = 'completed' AND direction = 'inbound'), 0) AS inbound_seconds,
+         COALESCE(SUM(CEIL(duration / 60.0)) FILTER (WHERE status = 'completed' AND direction = 'inbound'), 0) AS inbound_billable_minutes
        FROM kc_call_logs
        WHERE agent_id = $1
        GROUP BY date_trunc('month', started_at)
@@ -172,8 +175,10 @@ router.get('/billing/monthly-summary', authenticate, async (req, res) => {
       total_seconds: parseInt(row.total_seconds),
       outbound_seconds: parseInt(row.outbound_seconds),
       inbound_seconds: parseInt(row.inbound_seconds),
-      total_minutes: Math.round((parseInt(row.total_seconds) / 60) * 100) / 100,
-      total_cost: Math.round((parseInt(row.total_seconds) / 60) * rate * 100) / 100,
+      total_minutes: parseInt(row.total_billable_minutes),
+      outbound_minutes: parseInt(row.outbound_billable_minutes),
+      inbound_minutes: parseInt(row.inbound_billable_minutes),
+      total_cost: Math.round(parseInt(row.total_billable_minutes) * rate * 100) / 100,
     }));
 
     res.json({ rate_per_minute: rate, months });
@@ -253,7 +258,7 @@ router.get('/billing/export/:month', authenticate, async (req, res) => {
     let csv = 'Phone Number,Direction,Status,Duration (sec),Duration (min),Cost,Started At,Ended At\n';
     for (const row of result.rows) {
       const durSec = row.duration || 0;
-      const durMin = Math.round((durSec / 60) * 100) / 100;
+      const durMin = durSec > 0 ? Math.ceil(durSec / 60) : 0;
       const cost = Math.round(durMin * rate * 100) / 100;
       csv += [
         escCsv(row.phone_number),

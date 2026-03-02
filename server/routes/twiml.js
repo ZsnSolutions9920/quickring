@@ -230,8 +230,8 @@ router.post('/status', async (req, res) => {
         const billing = await db.query(
           `SELECT
              COALESCE(SUM(duration), 0) AS total_seconds,
-             ROUND(COALESCE(SUM(duration), 0) / 60.0, 2) AS total_minutes,
-             ROUND(COALESCE(SUM(duration), 0) / 60.0 * $1, 2) AS total_cost
+             COALESCE(SUM(CEIL(duration / 60.0)), 0) AS total_minutes,
+             ROUND(COALESCE(SUM(CEIL(duration / 60.0)), 0) * $1, 2) AS total_cost
            FROM kc_call_logs
            WHERE agent_id = $2
              AND started_at >= date_trunc('month', NOW())
