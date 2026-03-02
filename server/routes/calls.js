@@ -7,6 +7,40 @@ const { getIO } = require('../io');
 
 const router = express.Router();
 
+// Layer 3: Backfill missing recordings on-demand when reading call logs
+async function backfillRecordings(calls) {
+  const missing = calls.filter(
+    (c) => c.status === 'completed' && c.duration > 0 && !c.recording_sid
+  );
+  if (missing.length === 0) return calls;
+
+  const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
+  await Promise.all(
+    missing.map(async (call) => {
+      try {
+        const recordings = await client.recordings.list({ callSid: call.call_sid, limit: 1 });
+        if (recordings.length === 0) return;
+
+        const rec = recordings[0];
+        const recordingUrl = `https://api.twilio.com${rec.uri.replace('.json', '')}`;
+
+        await db.query(
+          'UPDATE kc_call_logs SET recording_sid = $1, recording_url = $2 WHERE id = $3 AND recording_sid IS NULL',
+          [rec.sid, recordingUrl, call.id]
+        );
+        call.recording_sid = rec.sid;
+        call.recording_url = recordingUrl;
+      } catch (err) {
+        // Non-fatal — don't break the response
+        console.error(`Backfill recording for ${call.call_sid}:`, err.message);
+      }
+    })
+  );
+
+  return calls;
+}
+
 // Log a new call
 router.post('/', authenticate, async (req, res) => {
   try {
@@ -265,8 +299,11 @@ router.get('/inbound-history', authenticate, async (req, res) => {
       [req.agent.id, limit, offset]
     );
 
+    // Layer 3: backfill any completed calls missing recording data
+    const calls = await backfillRecordings(result.rows);
+
     res.json({
-      calls: result.rows,
+      calls,
       total,
       page,
       totalPages: Math.ceil(total / limit),
@@ -282,7 +319,7 @@ router.get('/:callSid/recording', authenticate, async (req, res) => {
   try {
     // Check DB first for saved recording URL
     const result = await db.query(
-      'SELECT recording_url FROM kc_call_logs WHERE call_sid = $1 AND agent_id = $2',
+      'SELECT recording_sid, recording_url FROM kc_call_logs WHERE call_sid = $1 AND agent_id = $2',
       [req.params.callSid, req.agent.id]
     );
 
@@ -299,11 +336,12 @@ router.get('/:callSid/recording', authenticate, async (req, res) => {
       if (recordings.length === 0) {
         return res.status(404).json({ error: 'Recording not found' });
       }
-      recordingUrl = `https://api.twilio.com${recordings[0].uri.replace('.json', '')}`;
-      // Save for next time
+      const rec = recordings[0];
+      recordingUrl = `https://api.twilio.com${rec.uri.replace('.json', '')}`;
+      // Cache both recording_sid and recording_url for next time
       await db.query(
-        'UPDATE kc_call_logs SET recording_url = $1 WHERE call_sid = $2',
-        [recordingUrl, req.params.callSid]
+        'UPDATE kc_call_logs SET recording_sid = $1, recording_url = $2 WHERE call_sid = $3 AND recording_sid IS NULL',
+        [rec.sid, recordingUrl, req.params.callSid]
       );
     }
 
@@ -365,8 +403,11 @@ router.get('/history', authenticate, async (req, res) => {
       [req.agent.id, limit, offset]
     );
 
+    // Layer 3: backfill any completed calls missing recording data
+    const calls = await backfillRecordings(result.rows);
+
     res.json({
-      calls: result.rows,
+      calls,
       total,
       page,
       totalPages: Math.ceil(total / limit),

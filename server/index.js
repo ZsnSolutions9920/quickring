@@ -45,9 +45,10 @@ if (process.env.NODE_ENV === 'production') {
 
 server.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  // Auto-migrate: ensure recording_url column exists
+  // Auto-migrate: ensure recording columns exist
   try {
-    await db.query('ALTER TABLE kc_call_logs ADD COLUMN IF NOT EXISTS recording_url VARCHAR(512)');
+    await db.query('ALTER TABLE kc_call_logs ADD COLUMN IF NOT EXISTS recording_sid VARCHAR(64)');
+    await db.query('ALTER TABLE kc_call_logs ADD COLUMN IF NOT EXISTS recording_url TEXT');
   } catch (err) {
     console.error('Auto-migration warning:', err.message);
   }

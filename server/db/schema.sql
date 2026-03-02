@@ -30,8 +30,9 @@ CREATE TABLE IF NOT EXISTS kc_call_logs (
   ended_at     TIMESTAMPTZ
 );
 
--- Add recording_url column if upgrading from older schema
-ALTER TABLE kc_call_logs ADD COLUMN IF NOT EXISTS recording_url VARCHAR(512);
+-- Add recording columns if upgrading from older schema
+ALTER TABLE kc_call_logs ADD COLUMN IF NOT EXISTS recording_sid VARCHAR(64);
+ALTER TABLE kc_call_logs ADD COLUMN IF NOT EXISTS recording_url TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_kc_call_logs_agent ON kc_call_logs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_kc_call_logs_started ON kc_call_logs(started_at DESC);

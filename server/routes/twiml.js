@@ -10,6 +10,41 @@ const childToParentMap = new Map();
 
 const TERMINAL_STATUSES = ['completed', 'no-answer', 'busy', 'canceled', 'failed'];
 
+// Backup recording fetch — queries Twilio API to fill in missing recording data
+async function backfillRecording(callSid) {
+  try {
+    const row = await db.query(
+      'SELECT id, agent_id, recording_sid FROM kc_call_logs WHERE call_sid = $1',
+      [callSid]
+    );
+    if (!row.rows[0] || row.rows[0].recording_sid) return; // already has recording
+
+    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    const recordings = await client.recordings.list({ callSid, limit: 1 });
+    if (recordings.length === 0) return;
+
+    const rec = recordings[0];
+    const recordingUrl = `https://api.twilio.com${rec.uri.replace('.json', '')}`;
+
+    await db.query(
+      'UPDATE kc_call_logs SET recording_sid = $1, recording_url = $2 WHERE call_sid = $3 AND recording_sid IS NULL',
+      [rec.sid, recordingUrl, callSid]
+    );
+    console.log(`Backfill recording for ${callSid}: ${rec.sid}`);
+
+    const io = getIO();
+    if (io && row.rows[0].agent_id) {
+      io.to(`agent:${row.rows[0].agent_id}`).emit('call:updated', {
+        call_sid: callSid,
+        recording_sid: rec.sid,
+        recording_url: recordingUrl,
+      });
+    }
+  } catch (err) {
+    console.error(`Backfill recording error for ${callSid}:`, err.message);
+  }
+}
+
 // This endpoint is called by Twilio for both outgoing (browser→phone) and
 // incoming (phone→browser) calls via the TwiML App voice URL.
 router.post('/voice', async (req, res) => {
@@ -182,6 +217,12 @@ router.post('/status', async (req, res) => {
         });
       }
 
+      // On terminal status, schedule a backup recording fetch (Layer 2)
+      // In case the recording-status callback was missed
+      if (TERMINAL_STATUSES.includes(CallStatus)) {
+        setTimeout(() => backfillRecording(CallSid), 15000);
+      }
+
       // On terminal status, send updated billing to the specific agent
       if (TERMINAL_STATUSES.includes(CallStatus) && match) {
         const agentId = match[1];
@@ -215,16 +256,21 @@ router.post('/recording-status', async (req, res) => {
   console.log(`Recording ready for call ${CallSid}: ${RecordingSid} → ${RecordingUrl}`);
 
   try {
+    // Save recording_sid + recording_url, only update rows that don't already have a recording
     const result = await db.query(
-      'UPDATE kc_call_logs SET recording_url = $1 WHERE call_sid = $2 RETURNING agent_id',
-      [RecordingUrl, CallSid]
+      `UPDATE kc_call_logs
+       SET recording_sid = $1, recording_url = $2
+       WHERE call_sid = $3 AND recording_sid IS NULL
+       RETURNING agent_id, call_sid`,
+      [RecordingSid, RecordingUrl, CallSid]
     );
 
     if (result.rows[0]) {
       const io = getIO();
       if (io) {
         io.to(`agent:${result.rows[0].agent_id}`).emit('call:updated', {
-          call_sid: CallSid,
+          call_sid: result.rows[0].call_sid,
+          recording_sid: RecordingSid,
           recording_url: RecordingUrl,
         });
       }
