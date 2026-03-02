@@ -72,10 +72,30 @@ export function parsePhone(raw) {
   const cleaned = raw.replace(/[^\d+]/g, '');
   const digits = cleaned.replace('+', '');
 
-  // Try to match a country prefix
+  // Try to match a country prefix (longest prefix first)
   for (const cc of SORTED_CODES) {
     if (digits.startsWith(cc.prefix)) {
       const local = digits.slice(cc.prefix.length);
+
+      // If prefix is '1' (US/CA) but local part is way too long, the leading 1
+      // may be an international dialing prefix, not the country code.
+      // Strip it and try matching the real country code underneath.
+      if (cc.prefix === '1' && local.length > cc.len + 1) {
+        const stripped = digits.slice(1);
+        for (const cc2 of SORTED_CODES) {
+          if (stripped.startsWith(cc2.prefix)) {
+            const local2 = stripped.slice(cc2.prefix.length);
+            if (Math.abs(local2.length - cc2.len) <= 2) {
+              return {
+                flag: cc2.flag,
+                country: cc2.name,
+                formatted: `+${cc2.prefix} ${formatLocal(local2)}`,
+              };
+            }
+          }
+        }
+      }
+
       return {
         flag: cc.flag,
         country: cc.name,
