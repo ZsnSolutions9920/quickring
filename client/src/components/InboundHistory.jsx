@@ -4,6 +4,7 @@ import { useSocket } from '../contexts/SocketContext';
 import { parsePhone } from '../utils/phoneFormat';
 
 const PAGE_SIZE = 10;
+const RATE = 0.05;
 
 export default function InboundHistory() {
   const [calls, setCalls] = useState([]);
@@ -95,6 +96,9 @@ export default function InboundHistory() {
           <div className="history-list">
             {calls.map((call) => {
               const phone = parsePhone(call.phone_number);
+              const durSec = call.duration || 0;
+              const billableMin = durSec > 0 ? Math.ceil(durSec / 60) : 0;
+              const cost = (billableMin * RATE).toFixed(2);
               return (
                 <div key={call.id} className="history-item">
                   <div className="history-item-icon">
@@ -118,6 +122,7 @@ export default function InboundHistory() {
                       />
                     </span>
                     <span className="history-duration">{formatDuration(call.duration)}</span>
+                    <span className="billing-call-cost">${cost}</span>
                     {call.status === 'completed' && call.duration > 0 && (
                       <a
                         href={api.getRecordingUrl(call.call_sid)}
