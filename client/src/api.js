@@ -34,6 +34,12 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
 
+  verifyTotp: (totpToken, code) =>
+    request('/auth/verify-totp', {
+      method: 'POST',
+      body: JSON.stringify({ totpToken, code }),
+    }),
+
   getTwilioToken: () => request('/token/twilio-token'),
 
   logCall: (data) =>

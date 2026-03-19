@@ -12,7 +12,7 @@ import BillingReport from './components/BillingReport';
 import IncomingCallModal from './components/IncomingCallModal';
 
 export default function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, totpPending } = useAuth();
   const [view, setView] = useState('dialer');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
@@ -25,7 +25,7 @@ export default function App() {
     setTheme((t) => (t === 'light' ? 'dark' : 'light'));
   }, []);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || totpPending) {
     return <Login theme={theme} toggleTheme={toggleTheme} />;
   }
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 
 const AuthContext = createContext(null);
 
@@ -16,6 +16,10 @@ export function AuthProvider({ children }) {
 
   const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem('accessToken'));
 
+  // TOTP challenge state
+  const [totpToken, setTotpToken] = useState(null);
+  const [totpPending, setTotpPending] = useState(false);
+
   const isAuthenticated = !!(agent && accessToken);
 
   const login = useCallback(async (email, password) => {
@@ -31,11 +35,50 @@ export function AuthProvider({ children }) {
     }
 
     const data = await res.json();
+
+    // Server requires TOTP verification
+    if (data.requireTotp) {
+      setTotpToken(data.totpToken);
+      setTotpPending(true);
+      return { requireTotp: true };
+    }
+
+    // No TOTP required — complete login
     sessionStorage.setItem('accessToken', data.accessToken);
     sessionStorage.setItem('refreshToken', data.refreshToken);
     sessionStorage.setItem('agent', JSON.stringify(data.agent));
     setAccessToken(data.accessToken);
     setAgent(data.agent);
+    return { requireTotp: false };
+  }, []);
+
+  const verifyTotp = useCallback(async (code) => {
+    if (!totpToken) throw new Error('No TOTP challenge pending');
+
+    const res = await fetch('/api/auth/verify-totp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ totpToken, code }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Verification failed');
+    }
+
+    const data = await res.json();
+    sessionStorage.setItem('accessToken', data.accessToken);
+    sessionStorage.setItem('refreshToken', data.refreshToken);
+    sessionStorage.setItem('agent', JSON.stringify(data.agent));
+    setAccessToken(data.accessToken);
+    setAgent(data.agent);
+    setTotpToken(null);
+    setTotpPending(false);
+  }, [totpToken]);
+
+  const cancelTotp = useCallback(() => {
+    setTotpToken(null);
+    setTotpPending(false);
   }, []);
 
   const logout = useCallback(() => {
@@ -44,6 +87,8 @@ export function AuthProvider({ children }) {
     sessionStorage.removeItem('agent');
     setAccessToken(null);
     setAgent(null);
+    setTotpToken(null);
+    setTotpPending(false);
   }, []);
 
   const getAccessToken = useCallback(() => {
@@ -51,7 +96,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ agent, accessToken, isAuthenticated, login, logout, getAccessToken }}>
+    <AuthContext.Provider value={{ agent, accessToken, isAuthenticated, totpPending, login, verifyTotp, cancelTotp, logout, getAccessToken }}>
       {children}
     </AuthContext.Provider>
   );

@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS kc_agents (
 -- Add phone_number column if upgrading from older schema
 ALTER TABLE kc_agents ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20);
 
+-- Add TOTP secret column for authenticator app
+ALTER TABLE kc_agents ADD COLUMN IF NOT EXISTS totp_secret VARCHAR(64);
+
 CREATE TABLE IF NOT EXISTS kc_call_logs (
   id           SERIAL PRIMARY KEY,
   agent_id     INTEGER REFERENCES kc_agents(id),
