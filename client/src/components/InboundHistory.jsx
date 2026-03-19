@@ -149,7 +149,7 @@ export default function InboundHistory() {
                     </svg>
                   </div>
                   <div className="history-item-info">
-                    <span className="history-number">{phone.flag} {phone.formatted}</span>
+                    <span className="history-number">{phone.formatted}</span>
                     <span className="history-time">{formatTime(call.started_at)}</span>
                   </div>
                   <div className="history-item-meta">
