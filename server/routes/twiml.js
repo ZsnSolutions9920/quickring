@@ -58,12 +58,15 @@ router.post('/voice', async (req, res) => {
 
   if (isOutbound && to) {
     // --- OUTBOUND: agent in browser dialing a phone number ---
-    // Only allow US numbers (+1)
-    const digits = to.replace(/[\s\-\(\)\.]/g, '');
-    const isUS = (digits.startsWith('+1') && digits.length === 12)
-      || (digits.startsWith('1') && digits.length === 11)
-      || (digits.length === 10 && !digits.startsWith('+'));
-    if (!isUS) {
+    // Only allow US numbers (+1) — normalize and strictly validate
+    const digits = to.replace(/[^\d]/g, '');
+    let tenDigits = null;
+    if (digits.length === 11 && digits[0] === '1') tenDigits = digits.slice(1);
+    else if (digits.length === 10) tenDigits = digits;
+    // US format: area code (2-9XX) + exchange (2-9XX) + subscriber (XXXX)
+    const normalizedTo = tenDigits && /^[2-9]\d{2}[2-9]\d{6}$/.test(tenDigits) ? '+1' + tenDigits : null;
+
+    if (!normalizedTo) {
       twiml.say('Only calls to US numbers are allowed.');
       twiml.hangup();
       res.type('text/xml');
@@ -97,7 +100,7 @@ router.post('/voice', async (req, res) => {
       statusCallback: `${baseUrl}/api/twiml/child-status`,
       statusCallbackEvent: 'initiated ringing answered completed',
       statusCallbackMethod: 'POST',
-    }, to);
+    }, normalizedTo);
   } else if (!isOutbound && to) {
     // --- INBOUND: external caller dialing a Twilio number ---
     // Find the agent who owns the called number

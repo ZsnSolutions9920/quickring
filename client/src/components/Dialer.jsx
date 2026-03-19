@@ -4,12 +4,15 @@ import DialPad from './DialPad';
 import CallControls from './CallControls';
 import CallStatus from './CallStatus';
 
-function isUSNumber(number) {
-  const digits = number.replace(/[\s\-\(\)\.]/g, '');
-  if (digits.startsWith('+1') && digits.length === 12) return true;
-  if (digits.startsWith('1') && digits.length === 11) return true;
-  if (digits.length === 10 && !digits.startsWith('+')) return true;
-  return false;
+function normalizeUSNumber(number) {
+  const digits = number.replace(/[^\d]/g, '');
+  let tenDigits = null;
+  if (digits.length === 11 && digits[0] === '1') tenDigits = digits.slice(1);
+  else if (digits.length === 10) tenDigits = digits;
+  else return null;
+  // US format: area code (2-9XX) + exchange (2-9XX) + subscriber (XXXX)
+  if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(tenDigits)) return null;
+  return '+1' + tenDigits;
 }
 
 export default function Dialer() {
@@ -37,12 +40,13 @@ export default function Dialer() {
 
   const handleCall = () => {
     if (!phoneNumber.trim() || !deviceReady) return;
-    if (!isUSNumber(phoneNumber.trim())) {
+    const normalized = normalizeUSNumber(phoneNumber.trim());
+    if (!normalized) {
       setError('Only US numbers (+1) are allowed');
       return;
     }
     setError('');
-    makeCall(phoneNumber.trim());
+    makeCall(normalized);
   };
 
   return (
